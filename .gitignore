@@ -5,6 +5,11 @@
 .packages
 .pub/
 build/
+flutter/generated_plugin_registrant.cc
+flutter/generated_plugins.cmake
+flutter/generated_plugin_registrant.h
+flutter/generated_plugins.h
+mouse_touch_server/build/
 
 # iOS
 ios/Flutter/Flutter.framework
