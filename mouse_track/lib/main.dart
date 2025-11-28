@@ -34,13 +34,17 @@ class _TouchpadAppState extends State<TouchpadApp> {
   double scrollVerticalPosition = 0.5;
   double scrollHorizontalPosition = 0.5;
 
+  // Cursor speed customization
+  double cursorSpeedMultiplier = 1.0; // Default 1.0x speed
+
   final TextEditingController _ipController = TextEditingController();
 
   // GlobalKeys for tutorial
   final GlobalKey _ipFieldKey = GlobalKey();
-  final GlobalKey _connectButtonKey = GlobalKey();
   final GlobalKey _touchpadKey = GlobalKey();
   final GlobalKey _scrollbarKey = GlobalKey();
+  final GlobalKey _scrollbarThumbKey =
+      GlobalKey(); // Key for the draggable thumb
   final GlobalKey _leftButtonKey = GlobalKey();
   final GlobalKey _rightButtonKey = GlobalKey();
 
@@ -86,7 +90,7 @@ class _TouchpadAppState extends State<TouchpadApp> {
       TargetFocus(
         identify: "ipField",
         keyTarget: _ipFieldKey,
-        alignSkip: Alignment.topRight,
+        alignSkip: Alignment.bottomRight,
         contents: [
           TargetContent(
             align: ContentAlign.bottom,
@@ -97,7 +101,7 @@ class _TouchpadAppState extends State<TouchpadApp> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    "Server IP Address",
+                    "Remote IP Address",
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -106,39 +110,7 @@ class _TouchpadAppState extends State<TouchpadApp> {
                   ),
                   SizedBox(height: 10),
                   Text(
-                    "Enter IP address remote device.",
-                    style: TextStyle(color: Colors.red, fontSize: 15),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-      TargetFocus(
-        identify: "connectButton",
-        keyTarget: _connectButtonKey,
-        alignSkip: Alignment.topRight,
-        contents: [
-          TargetContent(
-            align: ContentAlign.bottom,
-            builder: (context, controller) => Container(
-              padding: const EdgeInsets.all(20),
-              child: const Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    "Connect Button",
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: Colors.red,
-                    ),
-                  ),
-                  SizedBox(height: 10),
-                  Text(
-                    "Tap here to connect to your PC. Make sure the server is running on your computer first!",
+                    "Enter the IP address of your PC server here. Tap the WiFi icon on the right to automatically discover servers on your network. Press Enter to connect.",
                     style: TextStyle(color: Colors.red, fontSize: 15),
                   ),
                 ],
@@ -173,9 +145,11 @@ class _TouchpadAppState extends State<TouchpadApp> {
                     ),
                   ),
                   SizedBox(height: 10),
-                  Text(
-                    "• 1 finger: Move cursor\n• 2 fingers: Zoom in/out\n• Double tap: Left click\n• Long press: Right click",
-                    style: TextStyle(color: Colors.red, fontSize: 15),
+                  ListTile(
+                    title: Text(
+                      "1 finger: Move cursor\n2 fingers: Zoom in/out\nDouble tap: Left click\nLong press: Right click",
+                      style: TextStyle(color: Colors.red, fontSize: 15),
+                    ),
                   ),
                 ],
               ),
@@ -185,7 +159,7 @@ class _TouchpadAppState extends State<TouchpadApp> {
       ),
       TargetFocus(
         identify: "scrollbar",
-        keyTarget: _scrollbarKey,
+        keyTarget: _scrollbarThumbKey, // Focus on the thumb only
         alignSkip: Alignment.topRight,
         contents: [
           TargetContent(
@@ -197,7 +171,7 @@ class _TouchpadAppState extends State<TouchpadApp> {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    "Scrollbar",
+                    "Vertical Scrollbar",
                     style: TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -206,7 +180,7 @@ class _TouchpadAppState extends State<TouchpadApp> {
                   ),
                   SizedBox(height: 10),
                   Text(
-                    "Drag this scrollbar up and down to scroll on your PC. It provides visual feedback for scrolling.",
+                    "Drag it up and down to scroll pages on your PC. The handle moves to show your scroll position.",
                     style: TextStyle(color: Colors.red, fontSize: 15),
                   ),
                 ],
@@ -378,8 +352,8 @@ class _TouchpadAppState extends State<TouchpadApp> {
 
   void sendMove(double dx, double dy) {
     final now = DateTime.now();
-    accumulatedDx += dx;
-    accumulatedDy += dy;
+    accumulatedDx += dx * cursorSpeedMultiplier; // Apply speed multiplier
+    accumulatedDy += dy * cursorSpeedMultiplier; // Apply speed multiplier
 
     if (lastMoveTime == null ||
         now.difference(lastMoveTime!).inMilliseconds >= movementThrottleMs) {
@@ -532,10 +506,154 @@ class _TouchpadAppState extends State<TouchpadApp> {
   }
 
   void selectServer(Map<String, dynamic> server) {
-    _ipController.text = server['ip'];
-    setState(() {
-      discoveredServers.clear();
-    });
+    debugPrint('📡 Selecting server: $server');
+    final ip = server['ip']?.toString() ?? '';
+    debugPrint('📡 IP to set: $ip');
+
+    if (ip.isNotEmpty) {
+      // Update the text field using controller.value for immediate update
+      _ipController.value = TextEditingValue(
+        text: ip,
+        selection: TextSelection.collapsed(offset: ip.length),
+      );
+
+      setState(() {
+        discoveredServers.clear();
+      });
+
+      // Show confirmation
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Server selected: $ip'),
+          duration: const Duration(seconds: 2),
+          backgroundColor: Colors.green,
+        ),
+      );
+
+      debugPrint('✓ IP field updated to: ${_ipController.text}');
+    } else {
+      debugPrint('⚠️ Server IP is empty!');
+    }
+  }
+
+  void _showSettingsPanel(BuildContext context) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (BuildContext context) {
+        return StatefulBuilder(
+          builder: (BuildContext context, StateSetter setModalState) {
+            return Container(
+              padding: const EdgeInsets.all(20),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Cursor Settings',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.close),
+                        onPressed: () => Navigator.pop(context),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  const Text(
+                    'Cursor Speed',
+                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      const Icon(Icons.speed, color: Colors.grey),
+                      Expanded(
+                        child: Slider(
+                          value: cursorSpeedMultiplier,
+                          min: 0.5,
+                          max: 3.0,
+                          divisions: 25,
+                          label: '${cursorSpeedMultiplier.toStringAsFixed(1)}x',
+                          activeColor: Colors.blue,
+                          onChanged: (value) {
+                            setModalState(() {
+                              setState(() {
+                                cursorSpeedMultiplier = value;
+                              });
+                            });
+                          },
+                        ),
+                      ),
+                      Text(
+                        '${cursorSpeedMultiplier.toStringAsFixed(1)}x',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Slow (0.5x)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      Text(
+                        'Normal (1.0x)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                      Text(
+                        'Fast (3.0x)',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.grey.shade600,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 20),
+                  Center(
+                    child: ElevatedButton(
+                      onPressed: () {
+                        setState(() {
+                          cursorSpeedMultiplier = 1.0;
+                        });
+                        setModalState(() {});
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: Colors.grey.shade300,
+                        foregroundColor: Colors.black,
+                      ),
+                      child: const Text('Reset to Default'),
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                ],
+              ),
+            );
+          },
+        );
+      },
+    );
   }
 
   @override
@@ -548,13 +666,29 @@ class _TouchpadAppState extends State<TouchpadApp> {
             appBar: AppBar(
               centerTitle: true,
               title: Text(
-                isConnected ? "Server (Connected)" : "Server (Offline)",
-                style: const TextStyle(color: Colors.white, fontSize: 15),
+                isConnected ? "RUNNING .." : "STOPPED",
+                style: TextStyle(
+                  color: isConnected
+                      ? Colors.green.shade400
+                      : Colors.red.shade400,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  fontStyle: FontStyle.italic,
+                ),
               ),
-              backgroundColor: isConnected
-                  ? Colors.green.shade400
-                  : Colors.red.shade400,
-              toolbarOpacity: 0.2,
+              backgroundColor: Colors.white,
+              actions: [
+                IconButton(
+                  icon: const Icon(Icons.settings, color: Colors.black),
+                  onPressed: () => _showSettingsPanel(scaffoldContext),
+                  tooltip: 'Cursor Settings',
+                ),
+              ],
+              leading: IconButton(
+                icon: const Icon(Icons.info, color: Colors.black),
+                onPressed: () => _showTutorial(scaffoldContext),
+                tooltip: 'Show Tutorial',
+              ),
             ),
             body: Column(
               children: [
@@ -573,56 +707,33 @@ class _TouchpadAppState extends State<TouchpadApp> {
                             ),
                           ],
                           textAlignVertical: TextAlignVertical.center,
-                          style: TextStyle(fontSize: 14, color: Colors.black),
+                          style: TextStyle(fontSize: 14, color: Colors.black45),
                           decoration: InputDecoration(
-                            labelText: "Server IP",
+                            labelText: "Remote IP",
                             labelStyle: TextStyle(fontSize: 15),
-                            hintText: "Enter PC IP (e.g. 192.168.1.5)",
+                            hintText: "Enter Remote IP (e.g. 192.168.0.1)",
                             hintStyle: TextStyle(fontSize: 14),
                             border: OutlineInputBorder(),
-                            prefixIcon: Icon(Icons.settings_ethernet_rounded),
-                            prefixIconColor: Colors.black,
+                            prefixIcon: Icon(Icons.computer_rounded),
+                            prefixIconColor: Colors.black45,
+                            suffixIcon: IconButton(
+                              icon: isDiscovering
+                                  ? const SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.black54,
+                                      ),
+                                    )
+                                  : const Icon(
+                                      Icons.wifi_find_rounded,
+                                      color: Colors.black54,
+                                    ),
+                              onPressed: isDiscovering ? null : discoverServers,
+                              tooltip: 'Discover Server',
+                            ),
                           ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      IconButton(
-                        icon: isDiscovering
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.blue,
-                                ),
-                              )
-                            : const Icon(Icons.search, color: Colors.blue),
-                        onPressed: isDiscovering ? null : discoverServers,
-                        tooltip: 'Discover Server',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.info, color: Colors.black),
-                        onPressed: () => _showTutorial(scaffoldContext),
-                        tooltip: 'Show Tutorial',
-                      ),
-                      ElevatedButton(
-                        key: _connectButtonKey,
-                        onPressed: () {
-                          isConnected = false;
-                          connectWebSocket();
-                        },
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.black12,
-                          foregroundColor: Colors.white,
-                          padding: EdgeInsets.zero,
-                          minimumSize: Size(55, 55),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(5),
-                          ),
-                        ),
-                        child: Icon(
-                          Icons.subdirectory_arrow_left_outlined,
-                          size: 22,
                         ),
                       ),
                     ],
@@ -634,9 +745,9 @@ class _TouchpadAppState extends State<TouchpadApp> {
                     margin: const EdgeInsets.symmetric(horizontal: 8),
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
+                      color: Colors.black26,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue.shade200),
+                      border: Border.all(color: Colors.black12),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -654,7 +765,7 @@ class _TouchpadAppState extends State<TouchpadApp> {
                             dense: true,
                             leading: const Icon(
                               Icons.computer,
-                              color: Colors.blue,
+                              color: Colors.black45,
                             ),
                             title: Text(
                               server['hostname'] ?? 'Unknown',
@@ -666,7 +777,7 @@ class _TouchpadAppState extends State<TouchpadApp> {
                             trailing: ElevatedButton(
                               onPressed: () => selectServer(server),
                               style: ElevatedButton.styleFrom(
-                                backgroundColor: Colors.blue,
+                                backgroundColor: Colors.black45,
                                 foregroundColor: Colors.white,
                               ),
                               child: const Text('Select'),
@@ -676,162 +787,208 @@ class _TouchpadAppState extends State<TouchpadApp> {
                       ],
                     ),
                   ),
+                SizedBox(height: 8),
                 Expanded(
-                  child: Stack(
-                    children: [
-                      // Main touchpad area
-                      GestureDetector(
-                        behavior: HitTestBehavior.opaque,
-                        onScaleStart: (details) {
-                          lastScale = 1.0;
-                        },
-                        onScaleUpdate: (details) {
-                          final fingers = details.pointerCount;
+                  child: Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Stack(
+                      children: [
+                        // Main touchpad area
+                        GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onScaleStart: (details) {
+                            lastScale = 1.0;
+                          },
+                          onScaleUpdate: (details) {
+                            final fingers = details.pointerCount;
 
-                          if (fingers == 1) {
-                            sendMove(
-                              details.focalPointDelta.dx,
-                              details.focalPointDelta.dy,
-                            );
-                            return;
-                          }
-
-                          if (fingers >= 2) {
-                            final currentScale = details.scale;
-                            final scaleDelta = currentScale - lastScale;
-                            final totalScaleChange = (currentScale - 1.0).abs();
-
-                            if (totalScaleChange > 0.1 ||
-                                scaleDelta.abs() > 0.03) {
-                              send({"type": "zoom", "delta": scaleDelta});
-                              lastScale = currentScale;
-                            }
-                            return;
-                          }
-
-                          if (fingers == 3) {
-                            final dx = details.focalPointDelta.dx;
-                            final dy = details.focalPointDelta.dy;
-                            sendScroll(dx, dy);
-                          }
-                        },
-                        onScaleEnd: (details) {
-                          lastScale = 1.0;
-                        },
-                        onDoubleTap: () =>
-                            send({"type": "click", "button": "left"}),
-                        onLongPress: () =>
-                            send({"type": "click", "button": "right"}),
-                        child: Container(
-                          key: _touchpadKey,
-                          decoration: BoxDecoration(
-                            color: Colors.black12,
-                            borderRadius: BorderRadius.only(
-                              topLeft: Radius.circular(20),
-                              topRight: Radius.circular(20),
-                            ),
-                            border: Border.all(color: Colors.black26),
-                          ),
-                        ),
-                      ),
-
-                      // Vertical Scrollbar (Always visible, draggable)
-                      Align(
-                        alignment: Alignment.bottomRight,
-                        child: Container(
-                          key: _scrollbarKey,
-                          width: 30,
-                          margin: EdgeInsets.only(bottom: 20),
-                          child: LayoutBuilder(
-                            builder: (context, constraints) {
-                              final barHeight = constraints.maxHeight * 0.2;
-                              final topPosition =
-                                  (constraints.maxHeight - barHeight) *
-                                  scrollVerticalPosition;
-                              return Stack(
-                                children: [
-                                  // Track
-                                  Container(
-                                    height: 200,
-                                    decoration: BoxDecoration(
-                                      border: Border.symmetric(
-                                        horizontal: BorderSide(
-                                          color: Colors.grey.shade200,
-                                          width: 0.8,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                  // Draggable Thumb
-                                  Positioned(
-                                    top: topPosition,
-                                    child: GestureDetector(
-                                      onVerticalDragUpdate: (details) {
-                                        setState(() {
-                                          scrollVerticalPosition =
-                                              ((topPosition +
-                                                          details.delta.dy) /
-                                                      (constraints.maxHeight -
-                                                          barHeight))
-                                                  .clamp(0.0, 1.0);
-                                        });
-                                        // Send scroll command based on drag
-                                        sendScroll(0, -details.delta.dy * 5);
-                                      },
-                                      child: SizedBox(
-                                        width: 30,
-                                        height: barHeight,
-                                        child: Icon(
-                                          Icons.unfold_more_double_outlined,
-                                          color: Colors.black26,
-                                          size: 30,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ],
+                            if (fingers == 1) {
+                              sendMove(
+                                details.focalPointDelta.dx,
+                                details.focalPointDelta.dy,
                               );
-                            },
+                              return;
+                            }
+
+                            if (fingers >= 2) {
+                              final currentScale = details.scale;
+                              final scaleDelta = currentScale - lastScale;
+                              final totalScaleChange = (currentScale - 1.0)
+                                  .abs();
+
+                              if (totalScaleChange > 0.1 ||
+                                  scaleDelta.abs() > 0.03) {
+                                send({"type": "zoom", "delta": scaleDelta});
+                                lastScale = currentScale;
+                              }
+                              return;
+                            }
+                          },
+                          onScaleEnd: (details) {
+                            lastScale = 1.0;
+                          },
+                          onTap: () =>
+                              send({"type": "click", "button": "left"}),
+                          onDoubleTap: () =>
+                              send({"type": "click", "button": "left"}),
+                          onLongPress: () =>
+                              send({"type": "click", "button": "right"}),
+                          child: Container(
+                            key: _touchpadKey,
+                            decoration: BoxDecoration(
+                              color: Colors.black38,
+                              borderRadius: BorderRadius.all(
+                                Radius.circular(8),
+                              ),
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+
+                        // Vertical Scrollbar (Always visible, draggable)
+                        Align(
+                          alignment: Alignment.centerRight,
+                          child: Container(
+                            key: _scrollbarKey,
+                            width: 50,
+                            margin: EdgeInsets.only(
+                              bottom: 20,
+                              right: 5,
+                              top: 20,
+                            ),
+                            child: LayoutBuilder(
+                              builder: (context, constraints) {
+                                final barHeight = 50.0; // Fixed thumb height
+                                final topPosition =
+                                    (constraints.maxHeight - barHeight) *
+                                    scrollVerticalPosition;
+                                return Stack(
+                                  children: [
+                                    // Track
+                                    Container(
+                                      width: 50,
+                                      height: constraints
+                                          .maxHeight, // Use full available height
+                                      decoration: BoxDecoration(
+                                        color: Colors.transparent,
+                                        border: Border(
+                                          right: BorderSide(
+                                            color: Colors.black12,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                    // Draggable Thumb
+                                    Positioned(
+                                      top: topPosition,
+                                      child: GestureDetector(
+                                        onVerticalDragUpdate: (details) {
+                                          setState(() {
+                                            scrollVerticalPosition =
+                                                ((topPosition +
+                                                            details.delta.dy) /
+                                                        (constraints.maxHeight -
+                                                            barHeight))
+                                                    .clamp(0.0, 1.0);
+                                          });
+                                          // Send scroll command based on drag
+                                          sendScroll(0, -details.delta.dy * 5);
+                                        },
+                                        child: Container(
+                                          key:
+                                              _scrollbarThumbKey, // Add key to thumb
+                                          width: 50,
+                                          decoration: BoxDecoration(
+                                            color: Colors.white60,
+                                            borderRadius: BorderRadius.all(
+                                              Radius.circular(50),
+                                            ),
+                                          ),
+                                          child: Column(
+                                            children: [
+                                              Icon(
+                                                Icons.arrow_upward_rounded,
+                                                color: Colors.black,
+                                                size: 30,
+                                              ),
+                                              Icon(
+                                                Icons.drag_handle_rounded,
+                                                color: Colors.black,
+                                                size: 30,
+                                              ),
+                                              Icon(
+                                                Icons.arrow_downward_rounded,
+                                                color: Colors.black,
+                                                size: 30,
+                                              ),
+                                            ],
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ],
             ),
-            bottomNavigationBar: Row(
-              children: [
-                Expanded(
-                  child: TextButton(
-                    key: _leftButtonKey,
-                    onPressed: () => send({"type": "click", "button": "left"}),
-                    style: TextButton.styleFrom(
-                      backgroundColor: Colors.black12,
-                      foregroundColor: Colors.white,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.zero,
+            bottomNavigationBar: Padding(
+              padding: const EdgeInsets.symmetric(
+                horizontal: 8.0,
+                vertical: 10.0,
+              ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: TextButton(
+                      key: _leftButtonKey,
+                      onPressed: () =>
+                          send({"type": "click", "button": "left"}),
+                      style: TextButton.styleFrom(
+                        backgroundColor: Colors.black26,
+                        foregroundColor: Colors.white,
+                        shadowColor: Colors.white,
+                        elevation: 0,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.only(
+                            topLeft: Radius.circular(10),
+                            bottomLeft: Radius.circular(10),
+                          ),
+                          side: BorderSide(color: Colors.black12),
+                        ),
                       ),
+                      child: SizedBox.fromSize(size: Size(50, 50)),
                     ),
-                    child: SizedBox.fromSize(size: Size(50, 50)),
                   ),
-                ),
-                const SizedBox(width: 1),
-                Expanded(
-                  child: TextButton(
-                    key: _rightButtonKey,
-                    onPressed: () => send({"type": "click", "button": "right"}),
-                    style: TextButton.styleFrom(
-                      backgroundColor: Colors.black12,
-                      foregroundColor: Colors.white,
-                      shape: const RoundedRectangleBorder(
-                        borderRadius: BorderRadius.zero,
+                  const SizedBox(width: 0.8),
+                  Expanded(
+                    child: TextButton(
+                      key: _rightButtonKey,
+                      onPressed: () =>
+                          send({"type": "click", "button": "right"}),
+                      style: TextButton.styleFrom(
+                        backgroundColor: Colors.black26,
+                        foregroundColor: Colors.white,
+                        shadowColor: Colors.white,
+                        elevation: 0,
+                        shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.only(
+                            topRight: Radius.circular(10),
+                            bottomRight: Radius.circular(10),
+                          ),
+                          side: BorderSide(color: Colors.black12),
+                        ),
                       ),
+                      child: SizedBox.fromSize(size: Size(50, 50)),
                     ),
-                    child: SizedBox.fromSize(size: Size(50, 50)),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           );
         },

@@ -10,6 +10,19 @@ const udpServer = dgram.createSocket('udp4');
 function getLocalIP() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
+    const normalized  = name.toLowerCase();
+    if(normalized.includes('virtualbox') ||
+            normalized.includes('vmware') ||
+            normalized.includes('hyper-v') ||
+            normalized.includes('vethernet') ||
+            normalized.includes('vboxnet') ||
+            normalized.includes('radmin') ||
+            normalized.includes('vpn') ||
+            normalized.includes('tun') ||
+            normalized.includes('tap')) {
+              continue;
+            }
+
     for (const iface of interfaces[name]) {
       // Skip internal and non-IPv4 addresses
       if (iface.family === 'IPv4' && !iface.internal) {

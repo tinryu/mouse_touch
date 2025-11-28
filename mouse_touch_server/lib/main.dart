@@ -1,8 +1,28 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'dart:io';
+import 'package:window_manager/window_manager.dart';
+import 'package:system_tray/system_tray.dart';
+import 'package:path_provider/path_provider.dart';
 import 'server/mouse_server.dart';
 
-void main() {
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await windowManager.ensureInitialized();
+
+  WindowOptions windowOptions = const WindowOptions(
+    size: Size(400, 600),
+    center: true,
+    backgroundColor: Colors.transparent,
+    skipTaskbar: false,
+    titleBarStyle: TitleBarStyle.normal,
+  );
+
+  windowManager.waitUntilReadyToShow(windowOptions, () async {
+    await windowManager.show();
+    await windowManager.focus();
+  });
+
   runApp(const MouseTouchServerApp());
 }
 
@@ -30,15 +50,21 @@ class ServerHomePage extends StatefulWidget {
   State<ServerHomePage> createState() => _ServerHomePageState();
 }
 
-class _ServerHomePageState extends State<ServerHomePage> {
+class _ServerHomePageState extends State<ServerHomePage> with WindowListener {
   MouseServer? _server;
   bool _isRunning = false;
   final List<String> _logs = [];
   String _localIP = 'Loading...';
+  bool _showLogs = true;
+
+  final SystemTray _systemTray = SystemTray();
 
   @override
   void initState() {
     super.initState();
+    windowManager.addListener(this);
+    windowManager.setPreventClose(true);
+    _initSystemTray();
     _getLocalIP();
   }
 
@@ -49,18 +75,44 @@ class _ServerHomePageState extends State<ServerHomePage> {
         includeLoopback: false,
       );
 
+      String? localIP;
+
+      // Filter out virtual adapters and prioritize real network interfaces
       for (var interface in interfaces) {
+        final name = interface.name.toLowerCase();
+
+        // Skip virtual adapters
+        if (name.contains('virtualbox') ||
+            name.contains('vmware') ||
+            name.contains('hyper-v') ||
+            name.contains('vethernet') ||
+            name.contains('vboxnet') ||
+            name.contains('radmin') ||
+            name.contains('vpn') ||
+            name.contains('docker')) {
+          continue;
+        }
+
         for (var addr in interface.addresses) {
           if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
-            setState(() {
-              _localIP = addr.address;
-            });
-            return;
+            final ip = addr.address;
+            // Prefer 192.168.x.x or 10.x.x.x addresses
+            if (ip.startsWith('192.168.') || ip.startsWith('10.')) {
+              localIP = ip;
+              break;
+            } else {
+              localIP ??= ip;
+            }
           }
         }
+        if (localIP != null &&
+            (localIP.startsWith('192.168.') || localIP.startsWith('10.'))) {
+          break;
+        }
       }
+
       setState(() {
-        _localIP = 'No IP found';
+        _localIP = localIP ?? 'No IP found';
       });
     } catch (e) {
       setState(() {
@@ -110,27 +162,120 @@ class _ServerHomePageState extends State<ServerHomePage> {
     }
   }
 
+  void _clearLogs() {
+    setState(() {
+      _logs.clear();
+    });
+  }
+
   @override
   void dispose() {
+    windowManager.removeListener(this);
     _server?.stop();
     super.dispose();
+  }
+
+  Future<void> _initSystemTray() async {
+    final iconPath = await _prepareSystemTrayIcon();
+    if (iconPath == null) {
+      debugPrint('System tray icon could not be prepared');
+      return;
+    }
+
+    await _systemTray.initSystemTray(
+      title: "Mouse Touch Server",
+      iconPath: iconPath,
+    );
+
+    final Menu menu = Menu();
+    await menu.buildFrom([
+      MenuItemLabel(
+        label: 'Show',
+        onClicked: (menuItem) => windowManager.show(),
+      ),
+      MenuItemLabel(
+        label: 'Hide',
+        onClicked: (menuItem) => windowManager.hide(),
+      ),
+      MenuItemLabel(
+        label: 'Exit',
+        onClicked: (menuItem) async {
+          await windowManager.setPreventClose(false);
+          await windowManager.close();
+        },
+      ),
+    ]);
+
+    await _systemTray.setContextMenu(menu);
+
+    _systemTray.registerSystemTrayEventHandler((eventName) {
+      debugPrint("SystemTray event: $eventName");
+      if (eventName == kSystemTrayEventClick) {
+        Platform.isWindows
+            ? windowManager.show()
+            : _systemTray.popUpContextMenu();
+      } else if (eventName == kSystemTrayEventRightClick) {
+        Platform.isWindows
+            ? _systemTray.popUpContextMenu()
+            : windowManager.show();
+      }
+    });
+  }
+
+  Future<String?> _prepareSystemTrayIcon() async {
+    try {
+      final byteData = await rootBundle.load(
+        'windows/runner/resources/app_icon.ico',
+      );
+      final supportDir = await getApplicationSupportDirectory();
+      final iconFile = File('${supportDir.path}/mouse_touch_tray.ico');
+      await iconFile.writeAsBytes(
+        byteData.buffer.asUint8List(
+          byteData.offsetInBytes,
+          byteData.lengthInBytes,
+        ),
+        flush: true,
+      );
+      return iconFile.path.replaceAll('\\', '/');
+    } catch (e) {
+      debugPrint('Failed to load tray icon: $e');
+      return null;
+    }
+  }
+
+  @override
+  void onWindowClose() async {
+    await windowManager.hide();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Mouse Touch Server'),
-        backgroundColor: _isRunning ? Colors.green : Colors.grey,
+        title: Text(
+          'Server Remote',
+          style: TextStyle(
+            fontSize: 12,
+            color: _isRunning ? Colors.green : Colors.black,
+          ),
+        ),
+        backgroundColor: Colors.transparent,
+        shape: Border(
+          bottom: BorderSide(
+            color: _isRunning ? Colors.green : Colors.black,
+            width: 5,
+          ),
+        ),
         actions: [
           Padding(
             padding: const EdgeInsets.all(16.0),
             child: Center(
               child: Text(
                 _isRunning ? 'RUNNING' : 'STOPPED',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  fontSize: 16,
+                style: TextStyle(
+                  fontWeight: FontWeight.w800,
+                  fontSize: 20,
+                  color: _isRunning ? Colors.green : Colors.black,
                 ),
               ),
             ),
@@ -231,36 +376,64 @@ class _ServerHomePageState extends State<ServerHomePage> {
             const SizedBox(height: 16),
 
             // Logs Section
-            const Text(
-              'Server Logs',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                const Text(
+                  'Server Logs',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                ),
+                Row(
+                  children: [
+                    IconButton(
+                      icon: Icon(
+                        _showLogs
+                            ? Icons.keyboard_arrow_down
+                            : Icons.keyboard_arrow_up,
+                      ),
+                      onPressed: () {
+                        setState(() {
+                          _showLogs = !_showLogs;
+                        });
+                      },
+                      tooltip: _showLogs ? 'Minimize Logs' : 'Show Logs',
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.cleaning_services_rounded),
+                      onPressed: _clearLogs,
+                      tooltip: 'Clear Logs',
+                    ),
+                  ],
+                ),
+              ],
             ),
             const SizedBox(height: 8),
-            Expanded(
-              child: Card(
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  color: Colors.black87,
-                  child: ListView.builder(
-                    reverse: false,
-                    itemCount: _logs.length,
-                    itemBuilder: (context, index) {
-                      return Padding(
-                        padding: const EdgeInsets.symmetric(vertical: 2),
-                        child: Text(
-                          _logs[index],
-                          style: const TextStyle(
-                            color: Colors.greenAccent,
-                            fontFamily: 'monospace',
-                            fontSize: 12,
+            if (_showLogs)
+              Expanded(
+                child: Card(
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    color: Colors.black87,
+                    child: ListView.builder(
+                      reverse: false,
+                      itemCount: _logs.length,
+                      itemBuilder: (context, index) {
+                        return Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 2),
+                          child: Text(
+                            _logs[index],
+                            style: const TextStyle(
+                              color: Colors.greenAccent,
+                              fontFamily: 'monospace',
+                              fontSize: 12,
+                            ),
                           ),
-                        ),
-                      );
-                    },
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
-            ),
           ],
         ),
       ),

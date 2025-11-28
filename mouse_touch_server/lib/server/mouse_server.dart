@@ -3,11 +3,13 @@ import 'dart:convert';
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'win32_mouse_controller.dart';
+import 'discovery_server.dart';
 
 class MouseServer {
   HttpServer? _server;
   final List<WebSocket> _clients = [];
   Timer? _heartbeatTimer;
+  DiscoveryServer? _discoveryServer;
   final Function(String)? onLog;
 
   MouseServer({this.onLog});
@@ -16,6 +18,61 @@ class MouseServer {
     try {
       _server = await HttpServer.bind(host, port);
       _log('✓ Server started on $host:$port');
+
+      // Get the actual IP address - prioritize WiFi/Ethernet
+      final interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLoopback: false,
+      );
+      String? localIP;
+
+      // Filter out virtual adapters and prioritize real network interfaces
+      for (var interface in interfaces) {
+        final name = interface.name.toLowerCase();
+
+        // Skip virtual adapters (VirtualBox, VMware, Hyper-V, etc.)
+        if (name.contains('virtualbox') ||
+            name.contains('vmware') ||
+            name.contains('hyper-v') ||
+            name.contains('vethernet') ||
+            name.contains('vboxnet') ||
+            name.contains('radmin') ||
+            name.contains('vpn') ||
+            name.contains('docker')) {
+          continue;
+        }
+
+        // Look for WiFi or Ethernet adapters
+        for (var addr in interface.addresses) {
+          if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
+            // Prefer addresses starting with 192.168 or 10. (common local networks)
+            final ip = addr.address;
+            if (ip.startsWith('192.168.') || ip.startsWith('10.')) {
+              localIP = ip;
+              _log('✓ Detected local IP: $localIP (${interface.name})');
+              break;
+            } else {
+              localIP ??= ip;
+            }
+          }
+        }
+        if (localIP != null &&
+            (localIP.startsWith('192.168.') || localIP.startsWith('10.'))) {
+          break;
+        }
+      }
+
+      // Start discovery server
+      if (localIP != null) {
+        _discoveryServer = DiscoveryServer(
+          serverIP: localIP,
+          serverPort: port,
+          onLog: onLog,
+        );
+        await _discoveryServer!.start();
+      } else {
+        _log('⚠️ Could not detect local IP address');
+      }
 
       // Start heartbeat timer
       _startHeartbeat();
@@ -143,6 +200,7 @@ class MouseServer {
 
   Future<void> stop() async {
     _heartbeatTimer?.cancel();
+    await _discoveryServer?.stop();
     for (final client in _clients) {
       await client.close();
     }

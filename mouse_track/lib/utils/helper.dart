@@ -13,6 +13,19 @@ class Helper {
 
       // Iterate through interfaces and find the first valid IPv4
       for (var interface in interfaces) {
+        final name = interface.name.toLowerCase();
+        // Skip virtual adapters (VirtualBox, VMware, Hyper-V, etc.)
+        if (name.contains('virtualbox') ||
+            name.contains('vmware') ||
+            name.contains('hyper-v') ||
+            name.contains('vethernet') ||
+            name.contains('vboxnet') ||
+            name.contains('radmin') ||
+            name.contains('vpn') ||
+            name.contains('docker')) {
+          continue;
+        }
+
         for (var addr in interface.addresses) {
           if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
             return addr.address; // e.g., "192.168.1.100"
