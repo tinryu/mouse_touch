@@ -1,0 +1,402 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Screen Remote Test Client</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      min-height: 100vh;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 20px;
+    }
+
+    .container {
+      background: white;
+      border-radius: 20px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+      max-width: 1200px;
+      width: 100%;
+      overflow: hidden;
+    }
+
+    .header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 30px;
+      text-align: center;
+    }
+
+    .header h1 {
+      font-size: 2em;
+      margin-bottom: 10px;
+    }
+
+    .status {
+      display: inline-block;
+      padding: 8px 20px;
+      border-radius: 20px;
+      font-size: 0.9em;
+      font-weight: bold;
+      margin-top: 10px;
+    }
+
+    .status.disconnected {
+      background: #ff4757;
+    }
+
+    .status.connected {
+      background: #2ed573;
+    }
+
+    .controls {
+      padding: 30px;
+      background: #f8f9fa;
+      border-bottom: 1px solid #e0e0e0;
+    }
+
+    .control-group {
+      display: flex;
+      gap: 15px;
+      flex-wrap: wrap;
+      align-items: center;
+      margin-bottom: 15px;
+    }
+
+    .control-group label {
+      font-weight: 600;
+      color: #333;
+      min-width: 100px;
+    }
+
+    input[type="text"],
+    input[type="number"] {
+      padding: 10px 15px;
+      border: 2px solid #e0e0e0;
+      border-radius: 8px;
+      font-size: 1em;
+      flex: 1;
+      min-width: 200px;
+    }
+
+    input:focus {
+      outline: none;
+      border-color: #667eea;
+    }
+
+    button {
+      padding: 12px 30px;
+      border: none;
+      border-radius: 8px;
+      font-size: 1em;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.3s;
+    }
+
+    .btn-primary {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+    }
+
+    .btn-primary:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
+    }
+
+    .btn-danger {
+      background: #ff4757;
+      color: white;
+    }
+
+    .btn-danger:hover {
+      background: #ff3838;
+    }
+
+    .btn-success {
+      background: #2ed573;
+      color: white;
+    }
+
+    .btn-success:hover {
+      background: #26de81;
+    }
+
+    button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    .screen-container {
+      padding: 30px;
+      background: #1a1a1a;
+      min-height: 400px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+    }
+
+    #screenImage {
+      max-width: 100%;
+      height: auto;
+      border-radius: 10px;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    }
+
+    .stats {
+      padding: 20px 30px;
+      background: #f8f9fa;
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 20px;
+    }
+
+    .stat-item {
+      text-align: center;
+      padding: 15px;
+      background: white;
+      border-radius: 10px;
+      box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+    }
+
+    .stat-value {
+      font-size: 1.8em;
+      font-weight: bold;
+      color: #667eea;
+      margin-bottom: 5px;
+    }
+
+    .stat-label {
+      font-size: 0.9em;
+      color: #666;
+    }
+
+    .placeholder {
+      text-align: center;
+      color: #666;
+    }
+
+    .placeholder-icon {
+      font-size: 4em;
+      margin-bottom: 20px;
+      opacity: 0.3;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>🖥️ Screen Remote Test Client</h1>
+      <div class="status disconnected" id="status">Disconnected</div>
+    </div>
+
+    <div class="controls">
+      <div class="control-group">
+        <label>Server IP:</label>
+        <input type="text" id="serverIp" value="172.168.99.143" placeholder="Enter server IP">
+        <button class="btn-primary" onclick="connect()">Connect</button>
+        <button class="btn-danger" onclick="disconnect()" disabled id="disconnectBtn">Disconnect</button>
+      </div>
+
+      <div class="control-group">
+        <label>Frame Rate:</label>
+        <input type="number" id="fps" value="10" min="5" max="30">
+        <label>Quality:</label>
+        <input type="number" id="quality" value="70" min="40" max="90">
+        <button class="btn-success" onclick="startStream()" disabled id="startBtn">Start Stream</button>
+        <button class="btn-danger" onclick="stopStream()" disabled id="stopBtn">Stop Stream</button>
+      </div>
+    </div>
+
+    <div class="screen-container">
+      <div class="placeholder" id="placeholder">
+        <div class="placeholder-icon">📺</div>
+        <p>Connect to server and start streaming to view screen</p>
+      </div>
+      <img id="screenImage" style="display: none;">
+    </div>
+
+    <div class="stats">
+      <div class="stat-item">
+        <div class="stat-value" id="frameCount">0</div>
+        <div class="stat-label">Frames Received</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="fps-display">0</div>
+        <div class="stat-label">FPS</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="bandwidth">0 KB/s</div>
+        <div class="stat-label">Bandwidth</div>
+      </div>
+      <div class="stat-item">
+        <div class="stat-value" id="resolution">-</div>
+        <div class="stat-label">Resolution</div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let ws = null;
+    let frameCount = 0;
+    let lastFrameTime = 0;
+    let fpsCounter = 0;
+    let fpsInterval = null;
+    let totalBytes = 0;
+    let bandwidthInterval = null;
+    let nextFrameIsData = false;
+    let currentFrameMeta = null;
+
+    function updateStatus(connected) {
+      const statusEl = document.getElementById('status');
+      const disconnectBtn = document.getElementById('disconnectBtn');
+      const startBtn = document.getElementById('startBtn');
+      
+      if (connected) {
+        statusEl.textContent = 'Connected';
+        statusEl.className = 'status connected';
+        disconnectBtn.disabled = false;
+        startBtn.disabled = false;
+      } else {
+        statusEl.textContent = 'Disconnected';
+        statusEl.className = 'status disconnected';
+        disconnectBtn.disabled = true;
+        startBtn.disabled = true;
+        document.getElementById('stopBtn').disabled = true;
+      }
+    }
+
+    function connect() {
+      const ip = document.getElementById('serverIp').value;
+      const wsUrl = `ws://${ip}:9090`;
+      
+      console.log('Connecting to:', wsUrl);
+      ws = new WebSocket(wsUrl);
+      ws.binaryType = 'arraybuffer';
+
+      ws.onopen = () => {
+        console.log('Connected to server');
+        updateStatus(true);
+      };
+
+      ws.onmessage = (event) => {
+        if (typeof event.data === 'string') {
+          const msg = JSON.parse(event.data);
+          console.log('Message:', msg.type);
+          
+          if (msg.type === 'frame_meta') {
+            currentFrameMeta = msg;
+            nextFrameIsData = true;
+          } else if (msg.type === 'screen_info') {
+            console.log('Screen info:', msg);
+          }
+        } else {
+          // Binary frame data
+          if (nextFrameIsData && currentFrameMeta) {
+            const blob = new Blob([event.data], { type: 'image/jpeg' });
+            const url = URL.createObjectURL(blob);
+            
+            const img = document.getElementById('screenImage');
+            const placeholder = document.getElementById('placeholder');
+            
+            img.onload = () => URL.revokeObjectURL(url);
+            img.src = url;
+            img.style.display = 'block';
+            placeholder.style.display = 'none';
+            
+            // Update stats
+            frameCount++;
+            fpsCounter++;
+            totalBytes += currentFrameMeta.size;
+            
+            document.getElementById('frameCount').textContent = frameCount;
+            document.getElementById('resolution').textContent = 
+              `${currentFrameMeta.width}x${currentFrameMeta.height}`;
+            
+            nextFrameIsData = false;
+            currentFrameMeta = null;
+          }
+        }
+      };
+
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+
+      ws.onclose = () => {
+        console.log('Disconnected from server');
+        updateStatus(false);
+        stopStream();
+      };
+    }
+
+    function disconnect() {
+      if (ws) {
+        ws.close();
+        ws = null;
+      }
+    }
+
+    function startStream() {
+      const fps = parseInt(document.getElementById('fps').value);
+      const quality = parseInt(document.getElementById('quality').value);
+      
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({
+          type: 'start_stream',
+          fps: fps,
+          quality: quality,
+          monitor: 0
+        }));
+        
+        document.getElementById('startBtn').disabled = true;
+        document.getElementById('stopBtn').disabled = false;
+        
+        // Start FPS counter
+        fpsInterval = setInterval(() => {
+          document.getElementById('fps-display').textContent = fpsCounter;
+          fpsCounter = 0;
+        }, 1000);
+        
+        // Start bandwidth counter
+        let lastBytes = 0;
+        bandwidthInterval = setInterval(() => {
+          const bytesPerSec = totalBytes - lastBytes;
+          const kbps = (bytesPerSec / 1024).toFixed(2);
+          document.getElementById('bandwidth').textContent = `${kbps} KB/s`;
+          lastBytes = totalBytes;
+        }, 1000);
+      }
+    }
+
+    function stopStream() {
+      if (ws && ws.readyState === WebSocket.OPEN) {
+        ws.send(JSON.stringify({ type: 'stop_stream' }));
+      }
+      
+      document.getElementById('startBtn').disabled = false;
+      document.getElementById('stopBtn').disabled = true;
+      
+      if (fpsInterval) {
+        clearInterval(fpsInterval);
+        fpsInterval = null;
+      }
+      
+      if (bandwidthInterval) {
+        clearInterval(bandwidthInterval);
+        bandwidthInterval = null;
+      }
+    }
+  </script>
+</body>
+</html>

@@ -204,6 +204,10 @@ class _ServerHomePageState extends State<ServerHomePage> with WindowListener {
           await windowManager.close();
         },
       ),
+      MenuItemLabel(
+        label: 'Stop Server',
+        onClicked: (menuItem) => _stopServer(),
+      ),
     ]);
 
     await _systemTray.setContextMenu(menu);

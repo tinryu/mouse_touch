@@ -141,4 +141,47 @@ class Win32MouseController {
       calloc.free(input);
     }
   }
+
+  /// Type text
+  static void typeText(String text) {
+    final input = calloc<INPUT>();
+    try {
+      input.ref.type = INPUT_KEYBOARD;
+
+      for (var i = 0; i < text.length; i++) {
+        final charCode = text.codeUnitAt(i);
+
+        // Key down
+        input.ref.ki.wScan = charCode;
+        input.ref.ki.dwFlags = KEYEVENTF_UNICODE;
+        SendInput(1, input, sizeOf<INPUT>());
+
+        // Key up
+        input.ref.ki.wScan = charCode;
+        input.ref.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+        SendInput(1, input, sizeOf<INPUT>());
+      }
+    } finally {
+      calloc.free(input);
+    }
+  }
+
+  /// Press Backspace
+  static void backspace() {
+    final input = calloc<INPUT>();
+    try {
+      input.ref.type = INPUT_KEYBOARD;
+      input.ref.ki.wVk = VK_BACK;
+      input.ref.ki.dwFlags = 0;
+      SendInput(1, input, sizeOf<INPUT>());
+
+      Sleep(10);
+
+      input.ref.ki.wVk = VK_BACK;
+      input.ref.ki.dwFlags = KEYEVENTF_KEYUP;
+      SendInput(1, input, sizeOf<INPUT>());
+    } finally {
+      calloc.free(input);
+    }
+  }
 }

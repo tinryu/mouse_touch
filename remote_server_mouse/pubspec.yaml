@@ -1,0 +1,36 @@
+name: remote_server_mouse
+description: Dart-based remote desktop server with mouse/keyboard control and screen streaming
+version: 2.0.0
+publish_to: 'none'
+
+environment:
+  sdk: ^3.9.2
+  flutter: ">=3.24.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+  cupertino_icons: ^1.0.8
+
+  # WebSocket server
+  shelf: ^1.4.0
+  shelf_web_socket: ^2.0.0
+  web_socket_channel: ^3.0.0
+
+  # Mouse control (simpler alternative)
+  ffi: ^2.1.0 # For FFI memory allocation (calloc)
+  win32: ^5.0.0 # For Windows mouse/keyboard control
+
+  # Screen capture
+  image: ^4.3.0
+
+  # Utilities
+  args: ^2.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true

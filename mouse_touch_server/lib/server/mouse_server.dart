@@ -155,6 +155,15 @@ class MouseServer {
         Win32MouseController.zoom(delta);
         break;
 
+      case 'text':
+        final text = data['text'] as String;
+        Win32MouseController.typeText(text);
+        break;
+
+      case 'backspace':
+        Win32MouseController.backspace();
+        break;
+
       case 'ping':
         _sendToClient(socket, {'type': 'pong'});
         break;
