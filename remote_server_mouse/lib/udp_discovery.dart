@@ -71,11 +71,53 @@ class UdpDiscovery {
       final interfaces = await NetworkInterface.list(
         type: InternetAddressType.IPv4,
       );
+
+      // 1. Prioritize Physical Interfaces (Wi-Fi, Ethernet) vs Virtual/VPN
+      for (var interface in interfaces) {
+        final name = interface.name.toLowerCase();
+        // Ignore known virtual/VPN adapters
+        if (name.contains('virtual') ||
+            name.contains('vpn') ||
+            name.contains('radmin') ||
+            name.contains('vmware') ||
+            name.contains('wsl') ||
+            name.contains('hyper-v') ||
+            name.contains('pseudo')) {
+          continue;
+        }
+
+        // Prioritize Wi-Fi or Ethernet explicitly
+        if (name.contains('wi-fi') ||
+            name.contains('ethernet') ||
+            name.contains('wlan') ||
+            name.contains('eth')) {
+          for (var addr in interface.addresses) {
+            if (!addr.isLoopback) {
+              print('  - Found candidate IP: ${addr.address} on $name');
+              return addr.address;
+            }
+          }
+        }
+      }
+
+      // 2. Fallback: Accept any non-virtual if specifically named ones weren't found
+      for (var interface in interfaces) {
+        final name = interface.name.toLowerCase();
+        if (name.contains('virtual') ||
+            name.contains('vpn') ||
+            name.contains('radmin') ||
+            name.contains('vmware')) {
+          continue;
+        }
+        for (var addr in interface.addresses) {
+          if (!addr.isLoopback) return addr.address;
+        }
+      }
+
+      // 3. Last Resort: Just take the first valid one we found originally (skipping loopback)
       for (var interface in interfaces) {
         for (var addr in interface.addresses) {
-          if (!addr.isLoopback) {
-            return addr.address;
-          }
+          if (!addr.isLoopback) return addr.address;
         }
       }
     } catch (e) {

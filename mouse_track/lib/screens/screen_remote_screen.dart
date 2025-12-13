@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:udp/udp.dart';
+import 'package:network_info_plus/network_info_plus.dart' as net_info;
+import 'dart:io';
 
 class ScreenRemoteScreen extends StatefulWidget {
   const ScreenRemoteScreen({super.key});
@@ -19,6 +21,8 @@ class _ScreenRemoteScreenState extends State<ScreenRemoteScreen> {
   Timer? reconnectTimer;
 
   final TextEditingController _ipController = TextEditingController();
+  static const int _defaultWebSocketPort = 9090;
+  static const int _discoveryPort = 8988;
 
   double lastScale = 1.0;
 
@@ -96,7 +100,7 @@ class _ScreenRemoteScreenState extends State<ScreenRemoteScreen> {
     });
 
     try {
-      udpClient = await UDP.bind(Endpoint.any(port: const Port(0)));
+      udpClient = await UDP.bind(Endpoint.any());
 
       udpClient!
           .asStream(timeout: const Duration(seconds: 5))
@@ -141,13 +145,39 @@ class _ScreenRemoteScreenState extends State<ScreenRemoteScreen> {
         'type': 'discover',
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
+      final data = discoveryMessage.codeUnits;
 
+      // 1. Send to global broadcast (255.255.255.255)
       await udpClient!.send(
-        discoveryMessage.codeUnits,
-        Endpoint.broadcast(port: const Port(9091)),
+        data,
+        Endpoint.broadcast(port: const Port(_discoveryPort)),
       );
 
-      debugPrint('📡 Sent discovery broadcast to port 9091');
+      // 2. Send to subnet directed broadcast (e.g. 192.168.1.255)
+      // This is often required on Android where 255.255.255.255 might be blocked or not routed.
+      try {
+        final info = net_info.NetworkInfo();
+        final wifiIp = await info.getWifiIP();
+        final wifiSubnet = await info.getWifiSubmask();
+
+        debugPrint('ℹ️ Client IP: $wifiIp, Subnet: $wifiSubnet');
+
+        if (wifiIp != null && wifiSubnet != null) {
+          final broadcastIp = _getBroadcastAddress(wifiIp, wifiSubnet);
+          debugPrint('📡 Sending directed broadcast to $broadcastIp');
+          await udpClient!.send(
+            data,
+            Endpoint.unicast(
+              InternetAddress(broadcastIp),
+              port: const Port(_discoveryPort),
+            ),
+          );
+        }
+      } catch (e) {
+        debugPrint('Error sending directed broadcast: $e');
+      }
+
+      debugPrint('📡 Sent discovery broadcast to port $_discoveryPort');
 
       Timer(const Duration(seconds: 5), () {
         if (mounted && isDiscovering) {
@@ -170,12 +200,24 @@ class _ScreenRemoteScreenState extends State<ScreenRemoteScreen> {
     }
   }
 
+  String _getBroadcastAddress(String ip, String subnetMask) {
+    List<int> ipParts = ip.split('.').map(int.parse).toList();
+    List<int> maskParts = subnetMask.split('.').map(int.parse).toList();
+    List<int> broadcastParts = [];
+
+    for (int i = 0; i < 4; i++) {
+      broadcastParts.add(ipParts[i] | (~maskParts[i] & 0xFF));
+    }
+
+    return broadcastParts.join('.');
+  }
+
   void connectWebSocket() {
     try {
       channel?.sink.close();
       reconnectTimer?.cancel();
 
-      final wsUrl = "ws://${_ipController.text}:9090";
+      final wsUrl = "ws://${_ipController.text}:$_defaultWebSocketPort";
       debugPrint("WS: Connecting to $wsUrl");
 
       channel = WebSocketChannel.connect(Uri.parse(wsUrl));

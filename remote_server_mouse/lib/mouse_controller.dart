@@ -29,6 +29,11 @@ class MouseController {
         case 'drag_end':
           await _handleDragEnd(data);
           break;
+
+        case 'zoom':
+          final delta = (data['delta'] as num).toDouble();
+          await _handleZoom(delta);
+          break;
       }
     } catch (e) {
       print('Mouse control error: $e');
@@ -117,17 +122,58 @@ class MouseController {
 
   /// Handle scroll
   static Future<void> _handleScroll(Map<String, dynamic> data) async {
-    // ignore: unused_local_variable
     final dx = (data['dx'] as num?)?.toInt() ?? 0;
     final dy = (data['dy'] as num?)?.toInt() ?? 0;
 
-    if (dy != 0) {
-      final input = calloc<INPUT>();
+    final input = calloc<INPUT>();
+    try {
       input.ref.type = INPUT_MOUSE;
-      input.ref.mi.dwFlags = MOUSEEVENTF_WHEEL;
-      input.ref.mi.mouseData = dy * 120; // WHEEL_DELTA = 120
 
+      if (dy != 0) {
+        // Vertical scroll - direct mapping from delta
+        input.ref.mi.dwFlags = MOUSEEVENTF_WHEEL;
+        input.ref.mi.mouseData = dy * 120;
+        SendInput(1, input, sizeOf<INPUT>());
+      }
+
+      if (dx != 0) {
+        // Horizontal scroll
+        input.ref.mi.dwFlags = MOUSEEVENTF_HWHEEL;
+        input.ref.mi.mouseData = dx * 120;
+        SendInput(1, input, sizeOf<INPUT>());
+      }
+    } finally {
+      calloc.free(input);
+    }
+  }
+
+  /// Handle zoom (Ctrl + Scroll)
+  static Future<void> _handleZoom(double delta) async {
+    final input = calloc<INPUT>();
+    try {
+      // Press Ctrl
+      input.ref.type = INPUT_KEYBOARD;
+      input.ref.ki.wVk = VK_CONTROL;
+      input.ref.ki.dwFlags = 0;
       SendInput(1, input, sizeOf<INPUT>());
+
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      // Scroll
+      input.ref.type = INPUT_MOUSE;
+      final wheelDelta = (delta * 1200).round();
+      input.ref.mi.dwFlags = MOUSEEVENTF_WHEEL;
+      input.ref.mi.mouseData = wheelDelta;
+      SendInput(1, input, sizeOf<INPUT>());
+
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      // Release Ctrl
+      input.ref.type = INPUT_KEYBOARD;
+      input.ref.ki.wVk = VK_CONTROL;
+      input.ref.ki.dwFlags = KEYEVENTF_KEYUP;
+      SendInput(1, input, sizeOf<INPUT>());
+    } finally {
       calloc.free(input);
     }
   }
@@ -178,22 +224,48 @@ class MouseController {
       switch (action) {
         case 'type':
           final text = data['text'] as String;
-          // Simple text typing - would need more complex implementation for full support
-          for (var char in text.runes) {
-            final input = calloc<INPUT>();
-            input.ref.type = INPUT_KEYBOARD;
-            input.ref.ki.wScan = char;
-            input.ref.ki.dwFlags = KEYEVENTF_UNICODE;
-            SendInput(1, input, sizeOf<INPUT>());
-
-            input.ref.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
-            SendInput(1, input, sizeOf<INPUT>());
-            calloc.free(input);
-          }
+          await typeText(text);
+          break;
+        case 'backspace':
+          await backspace();
           break;
       }
     } catch (e) {
       print('Keyboard control error: $e');
+    }
+  }
+
+  /// Public exposure of backspace
+  static Future<void> backspace() async {
+    final input = calloc<INPUT>();
+    try {
+      input.ref.type = INPUT_KEYBOARD;
+      input.ref.ki.wVk = VK_BACK;
+      input.ref.ki.dwFlags = 0;
+      SendInput(1, input, sizeOf<INPUT>());
+
+      await Future.delayed(const Duration(milliseconds: 10));
+
+      input.ref.ki.wVk = VK_BACK;
+      input.ref.ki.dwFlags = KEYEVENTF_KEYUP;
+      SendInput(1, input, sizeOf<INPUT>());
+    } finally {
+      calloc.free(input);
+    }
+  }
+
+  /// Public exposure of typeText
+  static Future<void> typeText(String text) async {
+    for (var char in text.runes) {
+      final input = calloc<INPUT>();
+      input.ref.type = INPUT_KEYBOARD;
+      input.ref.ki.wScan = char;
+      input.ref.ki.dwFlags = KEYEVENTF_UNICODE;
+      SendInput(1, input, sizeOf<INPUT>());
+
+      input.ref.ki.dwFlags = KEYEVENTF_UNICODE | KEYEVENTF_KEYUP;
+      SendInput(1, input, sizeOf<INPUT>());
+      calloc.free(input);
     }
   }
 }

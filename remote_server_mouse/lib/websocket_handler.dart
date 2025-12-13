@@ -136,6 +136,49 @@ class WebSocketHandler {
             jsonEncode({'type': 'pong', 'timestamp': msg['timestamp']}),
           );
           break;
+
+        // Legacy support for mouse_touch_server clients
+        case 'move':
+          MouseController.handleMouseControl({
+            'action': 'move',
+            'dx': msg['dx'],
+            'dy': msg['dy'],
+          });
+          break;
+
+        case 'click':
+          MouseController.handleMouseControl({
+            'action': 'click',
+            'button': msg['button'],
+            'double': msg['double'],
+          });
+          break;
+
+        case 'scroll':
+          MouseController.handleMouseControl({
+            'action': 'scroll',
+            'dx': msg['dx'],
+            'dy': msg['dy'],
+          });
+          break;
+
+        case 'zoom':
+          MouseController.handleMouseControl({
+            'action': 'zoom',
+            'delta': msg['delta'],
+          });
+          break;
+
+        case 'text':
+          MouseController.handleKeyboardControl({
+            'action': 'type',
+            'text': msg['text'],
+          });
+          break;
+
+        case 'backspace':
+          MouseController.handleKeyboardControl({'action': 'backspace'});
+          break;
       }
     } catch (e) {
       print('Error processing message: $e');
