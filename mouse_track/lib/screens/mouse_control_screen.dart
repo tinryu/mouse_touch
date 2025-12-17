@@ -539,31 +539,7 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
       } catch (e) {
         debugPrint('Directed broadcast error: $e');
       }
-
       debugPrint('📡 Sent discovery broadcast');
-
-      // Timeout after 5 seconds
-      Timer(const Duration(seconds: 5), () {
-        if (mounted && isDiscovering) {
-          setState(() => isDiscovering = false);
-          _discoverySocket?.close();
-
-          if (discoveredServers.isEmpty) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(
-                content: Text('No servers found. Make sure server is running.'),
-                duration: Duration(seconds: 3),
-              ),
-            );
-          }
-
-          // Auto-select if only one server found
-          if (discoveredServers.length == 1) {
-            _ipController.text = discoveredServers[0]['ip'];
-            debugPrint('Auto-selected server: ${discoveredServers[0]['ip']}');
-          }
-        }
-      });
     } catch (e) {
       debugPrint('Discovery error: $e');
       setState(() => isDiscovering = false);
@@ -799,6 +775,18 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
         ),
 
         actions: [
+          if (isConnected)
+            IconButton(
+              icon: const Icon(Icons.stop_circle_outlined, color: Colors.red),
+              onPressed: () {
+                channel?.sink.close();
+                setState(() => isConnected = false);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Disconnected from server')),
+                );
+              },
+              tooltip: 'Disconnect',
+            ),
           IconButton(
             icon: const Icon(Icons.info),
             onPressed: () => _showTutorial(context),

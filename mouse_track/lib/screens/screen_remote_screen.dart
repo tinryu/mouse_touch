@@ -22,7 +22,7 @@ class _ScreenRemoteScreenState extends State<ScreenRemoteScreen> {
 
   final TextEditingController _ipController = TextEditingController();
   static const int _defaultWebSocketPort = 9090;
-  static const int _discoveryPort = 8988;
+  static const int _discoveryPort = 8989;
 
   double lastScale = 1.0;
 
@@ -44,6 +44,7 @@ class _ScreenRemoteScreenState extends State<ScreenRemoteScreen> {
 
   // UDP Discovery
   bool isDiscovering = false;
+  bool _isServerListExpanded = false;
   List<Map<String, dynamic>> discoveredServers = [];
   UDP? udpClient;
 
@@ -97,6 +98,7 @@ class _ScreenRemoteScreenState extends State<ScreenRemoteScreen> {
     setState(() {
       isDiscovering = true;
       discoveredServers.clear();
+      _isServerListExpanded = true;
     });
 
     try {
@@ -132,7 +134,13 @@ class _ScreenRemoteScreenState extends State<ScreenRemoteScreen> {
               }
             },
             onDone: () {
-              setState(() => isDiscovering = false);
+              setState(() {
+                isDiscovering = false;
+                // Only collapse if no servers were found
+                if (discoveredServers.isEmpty) {
+                  _isServerListExpanded = false;
+                }
+              });
               udpClient?.close();
 
               if (discoveredServers.length == 1) {
@@ -630,6 +638,20 @@ class _ScreenRemoteScreenState extends State<ScreenRemoteScreen> {
                     },
                     tooltip: 'Fullscreen',
                   ),
+                isConnected
+                    ? IconButton(
+                        icon: const Icon(Icons.stop, color: Colors.white),
+                        tooltip: 'Disconnect',
+                        onPressed: () {
+                          // Close the connection
+                          channel?.sink.close();
+                          setState(() {
+                            isConnected = false;
+                            isStreaming = false;
+                          });
+                        },
+                      )
+                    : SizedBox.shrink(),
                 IconButton(
                   icon: const Icon(Icons.settings),
                   onPressed: _showSettingsPanel,
@@ -681,19 +703,89 @@ class _ScreenRemoteScreenState extends State<ScreenRemoteScreen> {
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.wifi_find),
-                      onPressed: discoverServers,
+                      onPressed: () {
+                        if (discoveredServers.isNotEmpty &&
+                            _isServerListExpanded) {
+                          setState(() {
+                            _isServerListExpanded = false;
+                          });
+                        } else {
+                          discoverServers();
+                        }
+                      },
                     ),
                   ),
                 ),
               ),
-              const SizedBox(width: 8),
-              ElevatedButton(
-                onPressed: isConnected ? null : connectWebSocket,
-                child: const Text('Connect'),
-              ),
             ],
           ),
         ),
+
+        // Server list (shown when servers are discovered)
+        if (discoveredServers.isNotEmpty && _isServerListExpanded)
+          AnimatedContainer(
+            duration: const Duration(milliseconds: 200),
+            margin: const EdgeInsets.symmetric(horizontal: 8),
+            padding: const EdgeInsets.all(8),
+            decoration: BoxDecoration(
+              color: Colors.grey.shade900,
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: Theme.of(context).dividerColor),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      'Discovered Servers',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white70,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 18),
+                      onPressed: () {
+                        setState(() {
+                          _isServerListExpanded = false;
+                        });
+                      },
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                    ),
+                  ],
+                ),
+                const Divider(height: 1),
+                ...discoveredServers.map(
+                  (server) => ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                    title: Text(
+                      server['hostname'] ?? 'Unknown',
+                      style: const TextStyle(color: Colors.white),
+                    ),
+                    subtitle: Text(
+                      '${server['ip']}:${server['port'] ?? _defaultWebSocketPort}',
+                      style: TextStyle(color: Colors.grey[400], fontSize: 12),
+                    ),
+                    trailing: const Icon(
+                      Icons.chevron_right,
+                      color: Colors.white70,
+                    ),
+                    onTap: () {
+                      _ipController.text = server['ip'];
+                      setState(() {
+                        _isServerListExpanded = false;
+                      });
+                      connectWebSocket();
+                    },
+                  ),
+                ),
+              ],
+            ),
+          ),
 
         // Stream controls
         if (isConnected)
