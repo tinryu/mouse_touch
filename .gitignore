@@ -7,9 +7,8 @@
 .pub/
 .flutter-plugins
 build/
-oldversions/
-linux/.dart_tool/
-macos/.dart_tool/
+oldversion/
+linux/
 flutter/generated_plugin_registrant.cc
 flutter/generated_plugins.cmake
 flutter/generated_plugin_registrant.h
