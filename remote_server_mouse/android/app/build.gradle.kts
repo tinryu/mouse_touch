@@ -9,7 +9,6 @@ android {
     namespace = "com.example.remote_server_mouse"
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
-    testOptions {
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_11

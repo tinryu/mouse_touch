@@ -1,11 +1,12 @@
 import 'dart:convert';
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 import 'package:mouse_track/utils/helper.dart';
 import 'package:tutorial_coach_mark/tutorial_coach_mark.dart';
-import 'package:udp/udp.dart';
+import 'package:network_info_plus/network_info_plus.dart' as net_info;
 
 class MouseControlScreen extends StatefulWidget {
   const MouseControlScreen({super.key});
@@ -17,6 +18,9 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
   WebSocketChannel? channel;
   bool isConnected = false;
   Timer? reconnectTimer;
+
+  int _selectedWsPort = 9090;
+  static const int _discoveryPort = 8989;
 
   DateTime? lastMoveTime;
   DateTime? lastScrollTime;
@@ -53,7 +57,7 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
   // UDP Discovery state
   bool isDiscovering = false;
   List<Map<String, dynamic>> discoveredServers = [];
-  UDP? udpClient;
+  RawDatagramSocket? _discoverySocket;
 
   @override
   void initState() {
@@ -63,7 +67,17 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
 
   Future<void> _initializeApp() async {
     await _initializeIP();
-    connectWebSocket();
+  }
+
+  String _getBroadcastAddress(String ip, String subnetMask) {
+    final ipParts = ip.split('.').map(int.parse).toList();
+    final maskParts = subnetMask.split('.').map(int.parse).toList();
+
+    final broadcastParts = List<int>.generate(4, (i) {
+      return ipParts[i] | (~maskParts[i] & 0xFF);
+    });
+
+    return broadcastParts.join('.');
   }
 
   Future<void> _initializeIP() async {
@@ -81,6 +95,7 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
     tutorialCoachMark?.finish();
     channel?.sink.close();
     reconnectTimer?.cancel();
+    _discoverySocket?.close();
     _ipController.dispose();
     super.dispose();
   }
@@ -280,10 +295,26 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
       channel?.sink.close();
       reconnectTimer?.cancel();
 
-      final wsUrl = "ws://${_ipController.text}:8989";
+      final wsUrl = "ws://${_ipController.text}:$_selectedWsPort";
       debugPrint("WS: Connecting to $wsUrl");
 
-      channel = WebSocketChannel.connect(Uri.parse(wsUrl));
+      final newChannel = WebSocketChannel.connect(Uri.parse(wsUrl));
+      channel = newChannel;
+
+      // Important: handle handshake failures (e.g. connection refused) to avoid
+      // unhandled exceptions from the underlying connection Future.
+      newChannel.ready.then(
+        (_) {
+          debugPrint("WS: ✓ Handshake complete");
+          reconnectTimer?.cancel();
+          if (mounted) setState(() => isConnected = true);
+        },
+        onError: (error) {
+          debugPrint("WS READY ERROR: $error");
+          if (mounted) setState(() => isConnected = false);
+          scheduleReconnect();
+        },
+      );
 
       Timer(const Duration(seconds: 5), () {
         if (!isConnected) {
@@ -294,14 +325,9 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
         }
       });
 
-      channel!.stream.listen(
+      newChannel.stream.listen(
         (event) {
           debugPrint("WS: ← $event");
-          if (!isConnected) {
-            debugPrint("WS: ✓ Connected!");
-            reconnectTimer?.cancel();
-            if (mounted) setState(() => isConnected = true);
-          }
         },
         onError: (err) {
           debugPrint("WS ERROR: $err");
@@ -414,52 +440,45 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
     });
 
     try {
-      // Create UDP instance
-      udpClient = await UDP.bind(Endpoint.any(port: const Port(0)));
+      _discoverySocket?.close();
+      _discoverySocket = await RawDatagramSocket.bind(
+        InternetAddress.anyIPv4,
+        0,
+      );
+      _discoverySocket!.broadcastEnabled = true;
 
-      // Listen for responses
-      udpClient!
-          .asStream(timeout: const Duration(seconds: 5))
-          .listen(
-            (datagram) {
-              if (datagram != null) {
-                try {
-                  final response = jsonDecode(
-                    String.fromCharCodes(datagram.data),
-                  );
-                  if (response['type'] == 'server_info') {
-                    debugPrint(
-                      '📡 Found server: ${response['hostname']} at ${response['ip']}',
-                    );
+      _discoverySocket!.listen((event) {
+        if (event != RawSocketEvent.read) return;
+        final datagram = _discoverySocket!.receive();
+        if (datagram == null) return;
 
-                    // Add server if not already in list
-                    final serverExists = discoveredServers.any(
-                      (server) => server['ip'] == response['ip'],
-                    );
-                    if (!serverExists) {
-                      setState(() {
-                        discoveredServers.add(response);
-                      });
-                    }
-                  }
-                } catch (e) {
-                  debugPrint('Error parsing discovery response: $e');
-                }
-              }
-            },
-            onDone: () {
-              setState(() => isDiscovering = false);
-              udpClient?.close();
+        try {
+          final decoded = jsonDecode(utf8.decode(datagram.data));
+          if (decoded is! Map) return;
 
-              // Auto-select if only one server found
-              if (discoveredServers.length == 1) {
-                _ipController.text = discoveredServers[0]['ip'];
-                debugPrint(
-                  'Auto-selected server: ${discoveredServers[0]['ip']}',
-                );
-              }
-            },
+          final response = Map<String, dynamic>.from(decoded);
+          if (response['type'] != 'server_info') return;
+          if (response['service'] != null &&
+              response['service'] != 'screen_remote') {
+            return;
+          }
+
+          debugPrint(
+            '📡 Found server: ${response['hostname']} at ${response['ip']}',
           );
+
+          final serverExists = discoveredServers.any(
+            (server) => server['ip'] == response['ip'],
+          );
+          if (!serverExists) {
+            setState(() {
+              discoveredServers.add(response);
+            });
+          }
+        } catch (e) {
+          debugPrint('Error parsing discovery response: $e');
+        }
+      });
 
       // Send broadcast discovery request
       final discoveryMessage = jsonEncode({
@@ -467,11 +486,59 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
         'timestamp': DateTime.now().millisecondsSinceEpoch,
       });
 
+      final payload = utf8.encode(discoveryMessage);
+
       // Broadcast to local network
-      await udpClient!.send(
-        discoveryMessage.codeUnits,
-        Endpoint.broadcast(port: const Port(8988)),
+      _discoverySocket!.send(
+        payload,
+        InternetAddress('255.255.255.255'),
+        _discoveryPort,
       );
+
+      // Unicast fallback: if user already typed a server IP, try direct discovery.
+      final typedAddress = InternetAddress.tryParse(_ipController.text);
+      if (typedAddress != null &&
+          typedAddress.type == InternetAddressType.IPv4) {
+        _discoverySocket!.send(payload, typedAddress, _discoveryPort);
+      }
+      debugPrint('Sending discovery to: 255.255.255.255:$_discoveryPort');
+      if (typedAddress != null) {
+        debugPrint(
+          'Sending unicast to: ${typedAddress.address}:$_discoveryPort',
+        );
+      }
+
+      // Directed broadcast (helps on Android networks where 255.255.255.255 is blocked)
+      try {
+        final info = net_info.NetworkInfo();
+        final wifiIp = await info.getWifiIP();
+        final wifiSubnet = await info.getWifiSubmask();
+
+        if (wifiIp != null && wifiSubnet != null) {
+          final broadcastIp = _getBroadcastAddress(wifiIp, wifiSubnet);
+          _discoverySocket!.send(
+            payload,
+            InternetAddress(broadcastIp),
+            _discoveryPort,
+          );
+        } else {
+          try {
+            final localIp = await Helper.getLocalIPv4();
+            final parts = localIp.split('.');
+            if (parts.length == 4) {
+              final fallbackBroadcastIp =
+                  '${parts[0]}.${parts[1]}.${parts[2]}.255';
+              _discoverySocket!.send(
+                payload,
+                InternetAddress(fallbackBroadcastIp),
+                _discoveryPort,
+              );
+            }
+          } catch (_) {}
+        }
+      } catch (e) {
+        debugPrint('Directed broadcast error: $e');
+      }
 
       debugPrint('📡 Sent discovery broadcast');
 
@@ -479,7 +546,7 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
       Timer(const Duration(seconds: 5), () {
         if (mounted && isDiscovering) {
           setState(() => isDiscovering = false);
-          udpClient?.close();
+          _discoverySocket?.close();
 
           if (discoveredServers.isEmpty) {
             ScaffoldMessenger.of(context).showSnackBar(
@@ -488,6 +555,12 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
                 duration: Duration(seconds: 3),
               ),
             );
+          }
+
+          // Auto-select if only one server found
+          if (discoveredServers.length == 1) {
+            _ipController.text = discoveredServers[0]['ip'];
+            debugPrint('Auto-selected server: ${discoveredServers[0]['ip']}');
           }
         }
       });
@@ -508,6 +581,10 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
   void selectServer(Map<String, dynamic> server) {
     debugPrint('📡 Selecting server: $server');
     final ip = server['ip']?.toString() ?? '';
+    final portRaw = server['port'];
+    final port = portRaw is int
+        ? portRaw
+        : int.tryParse(portRaw?.toString() ?? '') ?? 9090;
     debugPrint('📡 IP to set: $ip');
 
     if (ip.isNotEmpty) {
@@ -519,7 +596,11 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
 
       setState(() {
         discoveredServers.clear();
+        _selectedWsPort = port;
       });
+
+      // Connect immediately to the selected server.
+      connectWebSocket();
 
       // Show confirmation
       ScaffoldMessenger.of(context).showSnackBar(
@@ -704,6 +785,9 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
     return Scaffold(
       appBar: AppBar(
         centerTitle: true,
+        backgroundColor: isConnected
+            ? Colors.green.withValues(alpha: 0.2)
+            : Colors.red.withValues(alpha: 0.2),
         title: Text(
           isConnected ? "RUNNING .." : "STOPPED",
           style: TextStyle(
@@ -716,16 +800,16 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
 
         actions: [
           IconButton(
+            icon: const Icon(Icons.info),
+            onPressed: () => _showTutorial(context),
+            tooltip: 'Show Tutorial',
+          ),
+          IconButton(
             icon: const Icon(Icons.settings),
             onPressed: () => _showSettingsPanel(context),
             tooltip: 'Cursor Settings',
           ),
         ],
-        leading: IconButton(
-          icon: const Icon(Icons.info),
-          onPressed: () => _showTutorial(context),
-          tooltip: 'Show Tutorial',
-        ),
       ),
       body: Column(
         children: [
@@ -735,10 +819,11 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
               children: [
                 Expanded(
                   child: TextField(
-                    readOnly: true,
+                    readOnly: false,
                     key: _ipFieldKey,
                     keyboardType: TextInputType.number,
                     controller: _ipController,
+                    onSubmitted: (_) => connectWebSocket(),
                     inputFormatters: [
                       FilteringTextInputFormatter.allow(RegExp(r'[0-9.]')),
                     ],
@@ -865,7 +950,7 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
                     },
                     onTap: () => send({"type": "click", "button": "left"}),
                     onDoubleTap: () =>
-                        send({"type": "click", "button": "right"}),
+                        send({"type": "click", "button": "left"}),
                     onLongPress: () =>
                         send({"type": "click", "button": "right"}),
                     child: Container(
@@ -1018,7 +1103,7 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
                 key: _leftButtonKey,
                 onPressed: () => send({"type": "click", "button": "left"}),
                 style: TextButton.styleFrom(
-                  backgroundColor: Colors.grey.shade200,
+                  backgroundColor: Colors.grey,
                   foregroundColor: Colors.white,
                   shadowColor: Theme.of(context).shadowColor,
                   elevation: 0,
@@ -1039,7 +1124,7 @@ class _MouseControlScreenState extends State<MouseControlScreen> {
                 key: _rightButtonKey,
                 onPressed: () => send({"type": "click", "button": "right"}),
                 style: TextButton.styleFrom(
-                  backgroundColor: Colors.grey.shade200,
+                  backgroundColor: Colors.grey,
                   foregroundColor: Colors.white,
                   shadowColor: Theme.of(context).shadowColor,
                   elevation: 0,

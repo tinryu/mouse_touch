@@ -1,10 +1,15 @@
 # ============================
 # Flutter / Dart
 # ============================
+.venv/
 .dart_tool/
 .packages
 .pub/
+.flutter-plugins
 build/
+oldversions/
+linux/.dart_tool/
+macos/.dart_tool/
 flutter/generated_plugin_registrant.cc
 flutter/generated_plugins.cmake
 flutter/generated_plugin_registrant.h
@@ -46,6 +51,7 @@ web_build/
 # VSCode
 .vscode/
 .history/
+
 
 # IntelliJ / Android Studio
 .idea/

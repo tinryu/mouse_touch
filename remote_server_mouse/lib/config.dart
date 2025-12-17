@@ -4,8 +4,7 @@ class Config {
   static const int websocketPort = 9090;
   static const String websocketHost = '0.0.0.0';
 
-  static const int udpPort = 8988;
-  static const int udpBroadcastPort = 8988;
+  static const int udpPort = 8989;
 
   // Screen Capture Settings
   static const int defaultFps = 10;

@@ -602,6 +602,9 @@ class _ScreenRemoteScreenState extends State<ScreenRemoteScreen> {
       appBar: isFullscreen
           ? null
           : AppBar(
+              backgroundColor: isConnected
+                  ? Colors.green.withValues(alpha: 0.2)
+                  : Colors.red.withValues(alpha: 0.2),
               title: Text(
                 isConnected
                     ? (isStreaming ? 'STREAMING' : 'CONNECTED')

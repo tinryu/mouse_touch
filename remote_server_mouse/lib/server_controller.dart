@@ -137,6 +137,7 @@ class RemoteServerController {
       final interfaces = await NetworkInterface.list(
         type: InternetAddressType.IPv4,
         includeLoopback: false,
+        includeLinkLocal: false,
       );
 
       String fallback = '127.0.0.1';

@@ -12,12 +12,15 @@ void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await windowManager.ensureInitialized();
 
-  WindowOptions windowOptions = const WindowOptions(
-    size: Size(800, 900),
+  WindowOptions windowOptions = WindowOptions(
     center: true,
     backgroundColor: Colors.transparent,
     skipTaskbar: false,
     titleBarStyle: TitleBarStyle.normal,
+    title: 'Remote Server',
+    maximumSize: Size(1024, 768),
+    minimumSize: Size(500, 700),
+    size: Size(400, 700),
   );
 
   windowManager.waitUntilReadyToShow(windowOptions, () async {
@@ -57,6 +60,13 @@ class _RemoteServerMouseAppState extends State<RemoteServerMouseApp>
 
     _controller = RemoteServerController(onLog: debugPrint);
     _initializeController();
+
+    // Auto-start the server
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!_controller.isRunning) {
+        _startServer();
+      }
+    });
   }
 
   Future<void> _initSystemTray() async {
@@ -108,43 +118,31 @@ class _RemoteServerMouseAppState extends State<RemoteServerMouseApp>
 
   Future<String?> _prepareSystemTrayIcon() async {
     try {
-      // Create a default icon if resource not found, but we will try to load from assets first
-      // Assuming windows/runner/resources/app_icon.ico exists as in mouse_touch_server
-      // If not, we might fail unless we copy it.
-      // For now we try to load it from where we expect it.
+      // Try to load the ICO from assets
+      try {
+        final byteData = await rootBundle.load('assets/app_icon.ico');
+        final supportDir = await getApplicationSupportDirectory();
+        final iconFile = File('${supportDir.path}/tray_icon.ico');
 
-      // We need to ensure the asset is declared in pubspec.yaml if we use rootBundle.load
-      // However, mouse_touch_server used rootBundle.load('windows/runner/resources/app_icon.ico')
-      // but that path must be in assets.
+        // Ensure the directory exists
+        await iconFile.parent.create(recursive: true);
 
-      // Since remote_server_mouse didn't have it in assets, this might fling.
-      // We will try to rely on a fallback or check if we can access the file directly if it's on disk.
-      // Actually, rootBundle only works if it's in pubspec assets.
+        await iconFile.writeAsBytes(
+          byteData.buffer.asUint8List(
+            byteData.offsetInBytes,
+            byteData.lengthInBytes,
+          ),
+          flush: true,
+        );
 
-      // Let's assume we might need to add it to pubspec assets or use a local file from the build directory.
-      // In development mode, we can try to find it.
-
-      // Better strategy: Use a generic system icon if meaningful specific one falls back.
-      // Or just try to load and catch error.
-
-      // NOTE: In the merged version, I should ensure the icon is available.
-      // I'll leave the code similar to MTS but wrapped in try-catch.
-
-      final byteData = await rootBundle.load(
-        'windows/runner/resources/app_icon.ico',
-      );
-      final supportDir = await getApplicationSupportDirectory();
-      final iconFile = File('${supportDir.path}/remote_server_mouse_tray.ico');
-      await iconFile.writeAsBytes(
-        byteData.buffer.asUint8List(
-          byteData.offsetInBytes,
-          byteData.lengthInBytes,
-        ),
-        flush: true,
-      );
-      return iconFile.path.replaceAll('\\', '/');
+        debugPrint('Using ICO icon from assets: ${iconFile.path}');
+        return iconFile.path;
+      } catch (e) {
+        debugPrint('Failed to load ICO icon: $e');
+        return null;
+      }
     } catch (e) {
-      debugPrint('Failed to load tray icon: $e');
+      debugPrint('Failed to prepare system tray icon: $e');
       return null;
     }
   }
@@ -266,11 +264,11 @@ class _RemoteServerMouseAppState extends State<RemoteServerMouseApp>
         style: TextStyle(
           fontSize: 14,
           letterSpacing: 1.1,
-          color: statusColor,
+          color: Colors.white,
           fontWeight: FontWeight.w600,
         ),
       ),
-      backgroundColor: Colors.white,
+      backgroundColor: statusColor,
       foregroundColor: Colors.black87,
       shape: Border(bottom: BorderSide(color: statusColor, width: 4)),
       actions: [
@@ -336,15 +334,11 @@ class _RemoteServerMouseAppState extends State<RemoteServerMouseApp>
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildServerInfoCard(),
-          const SizedBox(height: 16),
-          _buildControlButtons(),
-          const SizedBox(height: 16),
           _buildMonitorAndStatsCard(),
-          const SizedBox(height: 16),
-          _buildCapabilitiesCard(),
-          const SizedBox(height: 16),
-          _buildLogsHeader(),
           const SizedBox(height: 8),
+          _buildControlButtons(),
+          const SizedBox(height: 8),
+          _buildLogsHeader(),
           if (_showLogs)
             Expanded(child: _buildLogsPanel())
           else
@@ -361,9 +355,9 @@ class _RemoteServerMouseAppState extends State<RemoteServerMouseApp>
       elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(8.0),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             const Text(
               'Server Information',
@@ -371,8 +365,8 @@ class _RemoteServerMouseAppState extends State<RemoteServerMouseApp>
             ),
             const SizedBox(height: 16),
             Wrap(
-              spacing: 24,
-              runSpacing: 12,
+              spacing: 20,
+              runSpacing: 20,
               children: [
                 _InfoTile(
                   icon: Icons.computer,
@@ -462,66 +456,42 @@ class _RemoteServerMouseAppState extends State<RemoteServerMouseApp>
         const <dynamic>[];
 
     return Card(
+      elevation: 0,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: Padding(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(8.0),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             const Text(
               'Monitors & Stream Stats',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
             ),
-            const SizedBox(height: 16),
             if (monitors.isEmpty)
               const Text('No monitor information available yet.')
             else
-              Column(
-                children: monitors.map((monitor) {
-                  final name = monitor['name'] ?? 'Display';
-                  final width = monitor['width'];
-                  final height = monitor['height'];
-                  final primary = monitor['primary'] == true;
-                  return ListTile(
-                    dense: true,
-                    leading: Icon(
-                      primary ? Icons.monitor : Icons.monitor_heart,
-                      color: primary ? Colors.blueAccent : Colors.grey,
-                    ),
-                    title: Text('$name (${width}x$height)'),
-                    subtitle: Text(primary ? 'Primary display' : 'Secondary'),
-                  );
-                }).toList(),
+              Container(
+                height: 50,
+                child: ListView.builder(
+                  itemCount: monitors.length,
+                  itemBuilder: (context, index) {
+                    final monitor = monitors[index];
+                    final name = monitor['name'] ?? 'Display';
+                    final width = monitor['width'];
+                    final height = monitor['height'];
+                    final primary = monitor['primary'] == true;
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(
+                        primary ? Icons.monitor : Icons.monitor_heart,
+                        color: primary ? Colors.lightGreen : Colors.grey,
+                      ),
+                      title: Text('$name (${width}x$height)'),
+                      subtitle: Text(primary ? 'Primary display' : 'Secondary'),
+                    );
+                  },
+                ),
               ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCapabilitiesCard() {
-    final chips = _controller.capabilities
-        .map(
-          (capability) => Chip(
-            label: Text(capability.replaceAll('_', ' ')),
-            backgroundColor: Colors.blueGrey.shade50,
-          ),
-        )
-        .toList();
-
-    return Card(
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      child: Padding(
-        padding: const EdgeInsets.all(20.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Capabilities',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            const SizedBox(height: 12),
-            Wrap(spacing: 8, runSpacing: 8, children: chips),
           ],
         ),
       ),
@@ -573,26 +543,27 @@ class _RemoteServerMouseAppState extends State<RemoteServerMouseApp>
                   style: TextStyle(color: Colors.white70),
                 ),
               )
-            : ListView.builder(
-                reverse: false,
-                itemCount: _logs.length,
-                itemBuilder: (context, index) {
-                  final log = _logs[index];
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 6,
-                    ),
-                    child: Text(
-                      log,
-                      style: const TextStyle(
-                        color: Colors.greenAccent,
-                        fontFamily: 'SourceCodePro',
-                        fontSize: 12,
+            : Scrollbar(
+                child: ListView.builder(
+                  itemCount: _logs.length,
+                  itemBuilder: (context, index) {
+                    final log = _logs[index];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 6,
                       ),
-                    ),
-                  );
-                },
+                      child: Text(
+                        log,
+                        style: const TextStyle(
+                          color: Colors.greenAccent,
+                          fontFamily: 'SourceCodePro',
+                          fontSize: 12,
+                        ),
+                      ),
+                    );
+                  },
+                ),
               ),
       ),
     );
@@ -615,7 +586,7 @@ class _InfoTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      width: 180,
+      width: 120,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [

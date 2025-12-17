@@ -18,7 +18,11 @@ class UdpDiscovery {
 
       print('📡 UDP Discovery server listening on 0.0.0.0:${Config.udpPort}');
 
-      _socket!.listen((event) {
+      // Enable broadcast
+      _socket!.broadcastEnabled = true;
+
+      // Listen for discovery requests
+      _socket!.listen((RawSocketEvent event) {
         if (event == RawSocketEvent.read) {
           final datagram = _socket!.receive();
           if (datagram != null) {
@@ -36,7 +40,6 @@ class UdpDiscovery {
     try {
       final message = utf8.decode(datagram.data);
       final request = jsonDecode(message);
-
       if (request['type'] == 'discover') {
         print(
           '📡 Discovery request from ${datagram.address.address}:${datagram.port}',

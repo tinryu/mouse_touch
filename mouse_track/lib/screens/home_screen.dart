@@ -16,16 +16,8 @@ class HomeScreen extends StatelessWidget {
             begin: Alignment.topLeft,
             end: Alignment.bottomRight,
             colors: isDark
-                ? [
-                    const Color(0xFF1a1a2e),
-                    const Color(0xFF16213e),
-                    const Color(0xFF0f3460),
-                  ]
-                : [
-                    const Color(0xFF667eea),
-                    const Color(0xFF764ba2),
-                    const Color(0xFFf093fb),
-                  ],
+                ? [const Color(0xFF4b6cb7), const Color(0xFF182848)]
+                : [const Color(0xFF1CB5E0), const Color(0xFF000851)],
           ),
         ),
         child: SafeArea(
@@ -33,17 +25,17 @@ class HomeScreen extends StatelessWidget {
             children: [
               // Header
               Padding(
-                padding: const EdgeInsets.all(24.0),
+                padding: const EdgeInsets.all(10.0),
                 child: Column(
                   children: [
                     Icon(
-                      Icons.devices,
+                      Icons.pan_tool_alt_sharp,
                       size: 80,
                       color: Colors.white.withValues(alpha: 0.9),
                     ),
-                    const SizedBox(height: 16),
+                    const SizedBox(height: 8),
                     Text(
-                      'Mouse Touch',
+                      'Finger touch',
                       style: TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
@@ -53,7 +45,7 @@ class HomeScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Remote Control Suite',
+                      'Suite for life',
                       style: TextStyle(
                         fontSize: 16,
                         color: Colors.white.withValues(alpha: 0.8),
@@ -67,16 +59,18 @@ class HomeScreen extends StatelessWidget {
               // Feature Cards
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                  padding: const EdgeInsets.symmetric(horizontal: 16.0),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       _FeatureCard(
-                        icon: Icons.mouse,
+                        icon: Icons.touch_app,
                         title: 'Mouse Control',
                         description: 'Control PC mouse and keyboard remotely',
                         gradient: const LinearGradient(
-                          colors: [Color(0xFF667eea), Color(0xFF764ba2)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFF1CB5E0), Color(0xFF000851)],
                         ),
                         onTap: () {
                           Navigator.push(
@@ -89,11 +83,13 @@ class HomeScreen extends StatelessWidget {
                       ),
                       const SizedBox(height: 20),
                       _FeatureCard(
-                        icon: Icons.desktop_windows,
+                        icon: Icons.video_label_rounded,
                         title: 'Screen Remote',
                         description: 'View and control PC screen remotely',
                         gradient: const LinearGradient(
-                          colors: [Color(0xFFf093fb), Color(0xFFf5576c)],
+                          begin: Alignment.topLeft,
+                          end: Alignment.bottomRight,
+                          colors: [Color(0xFFFC466B), Color(0xFF3F5EFB)],
                         ),
                         onTap: () {
                           Navigator.push(
@@ -177,7 +173,7 @@ class _FeatureCard extends StatelessWidget {
                   ),
                   child: Icon(icon, size: 48, color: Colors.white),
                 ),
-                const SizedBox(width: 20),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -185,7 +181,7 @@ class _FeatureCard extends StatelessWidget {
                       Text(
                         title,
                         style: const TextStyle(
-                          fontSize: 22,
+                          fontSize: 16,
                           fontWeight: FontWeight.bold,
                           color: Colors.white,
                         ),
@@ -194,13 +190,14 @@ class _FeatureCard extends StatelessWidget {
                       Text(
                         description,
                         style: TextStyle(
-                          fontSize: 14,
+                          fontSize: 12,
                           color: Colors.white.withValues(alpha: 0.9),
                         ),
                       ),
                     ],
                   ),
                 ),
+                const SizedBox(width: 8),
                 Icon(
                   Icons.arrow_forward_ios,
                   color: Colors.white.withValues(alpha: 0.8),
