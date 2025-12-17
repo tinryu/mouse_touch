@@ -1,0 +1,83 @@
+# ============================
+# Flutter / Dart
+# ============================
+.venv/
+.dart_tool/
+.packages
+.pub/
+.flutter-plugins
+build/
+oldversion/
+linux/
+flutter/generated_plugin_registrant.cc
+flutter/generated_plugins.cmake
+flutter/generated_plugin_registrant.h
+flutter/generated_plugins.h
+mouse_touch_server/build/
+
+# iOS
+ios/Flutter/Flutter.framework
+ios/Flutter/Generated.xcconfig
+ios/Pods/
+ios/Runner/GeneratedPluginRegistrant.*
+ios/Flutter/app.flx
+ios/Flutter/app.zip
+ios/.symlinks/
+ios/DerivedData/
+
+# Android
+android/.gradle/
+android/.idea/
+android/local.properties
+android/key.properties
+android/app/*.keystore
+android/build/
+
+# macOS
+macos/Flutter/ephemeral/
+macos/build/
+
+# Windows
+windows/runner/GeneratedPluginRegistrant.*
+windows/build/
+
+# Linux
+linux/build/
+
+# Web
+web_build/
+
+# VSCode
+.vscode/
+.history/
+
+
+# IntelliJ / Android Studio
+.idea/
+*.iml
+
+# Misc
+.DS_Store
+Thumbs.db
+*.log
+*.lock
+
+# Environment / Secrets
+.env
+.env.*
+*.secret
+*.private
+
+# Firebase
+google-services.json
+GoogleService-Info.plist
+
+# ============================
+# Node.js / WebSocket server
+# ============================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+server/logs/
+server/temp/
