@@ -1,9 +1,0 @@
-name: file_transfer_relay
-description: Relay server for file transfer app
-version: 1.0.0
-environment:
-  sdk: ^3.0.0
-dependencies:
-  web_socket_channel: ^2.4.0
-  uuid: ^4.0.0
-  args: ^2.4.0
